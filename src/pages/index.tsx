@@ -1,78 +1,315 @@
-import Image from "next/image";
-import { Geist, Geist_Mono } from "next/font/google";
+import Head from "next/head";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import CategoryDoughnut from "@/components/charts/CategoryDoughnut";
+import DailyExpensesBar from "@/components/charts/DailyExpensesBar";
+import { SignedIn, SignedOut, RedirectToSignIn, useUser } from "@clerk/nextjs";
+import Layout from "@/components/Layout";
+import { formatMoney, usePreferences } from "@/context/PreferencesContext";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+type TxRow = {
+  type: "INCOME" | "EXPENSE";
+  amount: number | string;
+  date: string;
+  category: string;
+};
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+function getCurrentMonthRange() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
 
-export default function Home() {
+  const start = new Date(year, month, 1);
+  const end = new Date(year, month + 1, 1);
+
+  const startStr = start.toISOString().slice(0, 10);
+  const endStr = end.toISOString().slice(0, 10);
+
+  const label = `${year}-${String(month + 1).padStart(2, "0")}`;
+  return { startStr, endStr, label };
+}
+
+export default function Dashboard() {
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<TxRow[]>([]);
+  const [error, setError] = useState<string>("");
+
+  const { user, isLoaded } = useUser();
+  const userId = user?.id;
+
+  const { currency } = usePreferences();
+
+  const [budgets, setBudgets] = useState<Record<string, number>>({});
+  const { startStr, endStr, label } = useMemo(() => getCurrentMonthRange(), []);
+
+  useEffect(() => {
+    if (!isLoaded || !userId) return;
+
+    async function load() {
+      setLoading(true);
+      setError("");
+
+      const { data: txData, error: txErr } = await supabase
+        .from("transactions")
+        .select("type, amount, date, category")
+        .eq("user_id", userId)
+        .gte("date", startStr)
+        .lt("date", endStr);
+
+      if (txErr) {
+        setError(txErr.message);
+        setRows([]);
+        setBudgets({});
+        setLoading(false);
+        return;
+      }
+
+      const { data: budgetRows, error: budgetErr } = await supabase
+        .from("budgets")
+        .select("category, amount")
+        .eq("user_id", userId)
+        .eq("month", label);
+
+      if (budgetErr) {
+        setError(budgetErr.message);
+        setRows((txData as any[]) ?? []);
+        setBudgets({});
+        setLoading(false);
+        return;
+      }
+
+      const budgetMap: Record<string, number> = {};
+      for (const b of budgetRows ?? []) {
+        const cat = (b as any).category as string;
+        const amt = Number((b as any).amount);
+        if (cat && Number.isFinite(amt)) budgetMap[cat] = amt;
+      }
+
+      setRows((txData as any[]) ?? []);
+      setBudgets(budgetMap);
+      setLoading(false);
+    }
+
+    load();
+  }, [isLoaded, userId, startStr, endStr, label]);
+
+  const totals = useMemo(() => {
+    let income = 0;
+    let expense = 0;
+
+    for (const r of rows) {
+      const amt = typeof r.amount === "string" ? Number(r.amount) : r.amount;
+      if (!Number.isFinite(amt)) continue;
+
+      if (r.type === "INCOME") income += amt;
+      else expense += amt;
+    }
+
+    return { income, expense, balance: income - expense };
+  }, [rows]);
+
+  const expenseByCategory = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const r of rows) {
+      const amt = typeof r.amount === "string" ? Number(r.amount) : r.amount;
+      if (!Number.isFinite(amt)) continue;
+      if (r.type !== "EXPENSE") continue;
+
+      const cat = r.category ?? "Other";
+      map[cat] = (map[cat] ?? 0) + amt;
+    }
+    return map;
+  }, [rows]);
+
+  const expenseByDay = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const r of rows) {
+      const amt = typeof r.amount === "string" ? Number(r.amount) : r.amount;
+      if (!Number.isFinite(amt)) continue;
+      if (r.type !== "EXPENSE") continue;
+
+      const day = r.date;
+      map[day] = (map[day] ?? 0) + amt;
+    }
+    return map;
+  }, [rows]);
+
+  const budgetUsage = useMemo(() => {
+    const categories = new Set([
+      ...Object.keys(budgets),
+      ...Object.keys(expenseByCategory),
+    ]);
+
+    const list = Array.from(categories).map((cat) => {
+      const spent = expenseByCategory[cat] ?? 0;
+      const limit = budgets[cat] ?? 0;
+      const pct = limit > 0 ? (spent / limit) * 100 : null;
+      return { cat, spent, limit, pct };
+    });
+
+    list.sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1));
+    return list;
+  }, [budgets, expenseByCategory]);
+
   return (
-    <div
-      className={`${geistSans.className} ${geistMono.className} flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black`}
-    >
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the index.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs/pages/getting-started?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <>
+      <Head>
+        <title>Dashboard | Budget Planner</title>
+      </Head>
+
+      <SignedOut>
+        <RedirectToSignIn />
+      </SignedOut>
+
+      <SignedIn>
+        <Layout>
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              Current month: {label}
+            </p>
+          </div>
+
+          {error ? (
+            <div className="rounded-2xl bg-white dark:bg-gray-900/60 p-5 shadow-sm text-red-700 dark:text-red-300 mb-6">
+              Error: {error}
+            </div>
+          ) : null}
+
+          {/* Totals */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="rounded-2xl bg-white dark:bg-gray-900/60 p-5 shadow-sm">
+              <p className="text-sm text-gray-600 dark:text-gray-400">Income</p>
+              <p className="text-2xl font-bold mt-1">
+                {loading ? "…" : formatMoney(totals.income, currency)}
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white dark:bg-gray-900/60 p-5 shadow-sm">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Expenses
+              </p>
+              <p className="text-2xl font-bold mt-1">
+                {loading ? "…" : formatMoney(totals.expense, currency)}
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white dark:bg-gray-900/60 p-5 shadow-sm">
+              <p className="text-sm text-gray-600 dark:text-gray-400">Balance</p>
+              <p className="text-2xl font-bold mt-1">
+                {loading ? "…" : formatMoney(totals.balance, currency)}
+              </p>
+            </div>
+          </div>
+
+          {/* Charts */}
+          <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="rounded-2xl bg-white dark:bg-gray-900/60 p-5 shadow-sm">
+              <h2 className="font-semibold mb-3">Expenses by category</h2>
+              {loading ? (
+                <p className="text-gray-600 dark:text-gray-400">Loading…</p>
+              ) : (
+                <CategoryDoughnut dataMap={expenseByCategory} />
+              )}
+            </div>
+
+            <div className="rounded-2xl bg-white dark:bg-gray-900/60 p-5 shadow-sm">
+              <h2 className="font-semibold mb-3">Daily expenses</h2>
+              {loading ? (
+                <p className="text-gray-600 dark:text-gray-400">Loading…</p>
+              ) : (
+                <DailyExpensesBar dataMap={expenseByDay} />
+              )}
+            </div>
+          </div>
+
+          {/* Budget Progress */}
+          <div className="mt-6 rounded-2xl bg-white dark:bg-gray-900/60 p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="font-semibold">Budget progress</h2>
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                Warn at 80%
+              </span>
+            </div>
+
+            {loading ? (
+              <p className="text-gray-600 dark:text-gray-400 mt-3">Loading…</p>
+            ) : budgetUsage.length === 0 ? (
+              <p className="text-gray-600 dark:text-gray-400 mt-3">
+                No budgets or expenses for this month.
+              </p>
+            ) : (
+              <div className="space-y-3 mt-4">
+                {budgetUsage.map((b) => {
+                  const pct = b.pct;
+                  const pctClamped =
+                    pct === null ? 0 : Math.min(100, Math.max(0, pct));
+                  const isWarn = pct !== null && pct >= 80 && pct < 100;
+                  const isOver = pct !== null && pct >= 100;
+
+                  return (
+                    <div
+                      key={b.cat}
+                      className="rounded-xl bg-gray-50 dark:bg-gray-900/40 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="font-medium">{b.cat}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            Spent: {formatMoney(b.spent, currency)} / Budget:{" "}
+                            {b.limit ? formatMoney(b.limit, currency) : "—"}
+                          </p>
+                        </div>
+
+                        <div className="text-sm font-semibold">
+                          {pct === null ? "No budget" : `${pct.toFixed(0)}%`}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 h-2 rounded-full bg-gray-200 dark:bg-gray-800">
+                        <div
+                          className={`h-2 rounded-full ${
+                            isOver
+                              ? "bg-red-600"
+                              : isWarn
+                              ? "bg-yellow-500"
+                              : "bg-green-600"
+                          }`}
+                          style={{ width: `${pctClamped}%` }}
+                        />
+                      </div>
+
+                      {isWarn ? (
+                        <p className="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
+                          ⚠️ You are close to exceeding this budget.
+                        </p>
+                      ) : null}
+
+                      {isOver ? (
+                        <p className="mt-2 text-sm text-red-700 dark:text-red-300">
+                          ⛔ Budget exceeded for this category.
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Notes */}
+          <div className="mt-6 rounded-2xl bg-white dark:bg-gray-900/60 p-6 shadow-sm">
+            <h2 className="font-semibold mb-2">Quick notes</h2>
+            <ul className="list-disc pl-5 text-gray-700 dark:text-gray-300 text-sm space-y-1">
+              <li>These totals and charts are for the current month only.</li>
+              <li>
+                Budgets are loaded from the Settings page for the same month.
+              </li>
+              <li>Data is scoped to your logged-in account (Clerk user).</li>
+            </ul>
+          </div>
+        </Layout>
+      </SignedIn>
+    </>
   );
 }

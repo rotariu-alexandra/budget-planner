@@ -1,6 +1,15 @@
 import "@/styles/globals.css";
 import type { AppProps } from "next/app";
+import { ClerkProvider } from "@clerk/nextjs";
+import { PreferencesProvider } from "@/context/PreferencesContext";
+
 
 export default function App({ Component, pageProps }: AppProps) {
-  return <Component {...pageProps} />;
+  return (
+    <ClerkProvider {...pageProps}>
+      <PreferencesProvider>
+        <Component {...pageProps} />
+      </PreferencesProvider>
+    </ClerkProvider>
+  );
 }
