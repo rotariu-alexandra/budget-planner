@@ -264,14 +264,141 @@ export default function TransactionsPage(_props: Props) {
       </div>
 
      
-      <details className="rounded-2xl bg-white dark:bg-gray-900/60 p-5 shadow-sm">
-        <summary className="cursor-pointer font-medium text-gray-700 dark:text-gray-300">
-          Advanced actions
-        </summary>
+          <details className="rounded-2xl bg-white dark:bg-gray-900/60 p-5 shadow-sm">
+      <summary className="cursor-pointer font-medium text-gray-700 dark:text-gray-300">
+        Advanced actions (CSV import)
+      </summary>
 
-        <div className="mt-4">
+      <div className="mt-4">
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          Expected header:{" "}
+          <code className="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded">
+            type,amount,category,date,note
+          </code>{" "}
+          (note optional). Date format:{" "}
+          <code className="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded">
+            YYYY-MM-DD
+          </code>
+          .
+        </p>
+
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="inline-flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-2 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800">
+              Choose file
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    setCsvText(String(reader.result ?? ""));
+                    setImportMsg("");
+                    setImportErrs([]);
+                  };
+                  reader.readAsText(file);
+                }}
+              />
+            </label>
+
+            <span className="text-sm text-gray-600 dark:text-gray-400">
+              {csvText.trim() ? "File loaded" : "No file selected"}
+            </span>
+          </div>
+
+          <textarea
+            value={csvText}
+            onChange={(e) => {
+              setCsvText(e.target.value);
+              setImportMsg("");
+              setImportErrs([]);
+            }}
+            className="w-full min-h-[170px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 p-3 text-sm font-mono"
+            placeholder={`type,amount,category,date,note
+    EXPENSE,25.5,Food,2026-01-05,Lunch
+    INCOME,3000,Salary,2026-01-01,`}
+          />
+
+          <div className="flex gap-2 flex-wrap">
+            <button
+              type="button"
+              disabled={importing || !csvText.trim()}
+              onClick={async () => {
+                setImporting(true);
+                setImportMsg("");
+                setImportErrs([]);
+
+                try {
+                  const r = await fetch("/api/transactions/import", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ csv: csvText }),
+                  });
+
+                  const data = await r.json();
+
+                  if (!r.ok) {
+                    setImportMsg(data?.error ?? "Import failed");
+                    setImportErrs(Array.isArray(data?.details) ? data.details : []);
+                    return;
+                  }
+
+                  setImportMsg(`Imported ${data.inserted} rows.`);
+                  setCsvText("");
+                  await load();
+                } catch (err: any) {
+                  setImportMsg(err?.message ?? "Import failed");
+                } finally {
+                  setImporting(false);
+                }
+              }}
+              className="rounded-lg bg-indigo-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50 hover:bg-indigo-500"
+            >
+              {importing ? "Importing…" : "Import CSV"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCsvText("");
+                setImportMsg("");
+                setImportErrs([]);
+              }}
+              className="rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
+              Clear
+            </button>
+          </div>
+
+          {importMsg ? (
+            <div className="text-sm">
+              <p
+                className={
+                  importErrs.length
+                    ? "text-red-700 dark:text-red-300"
+                    : "text-green-700 dark:text-green-300"
+                }
+              >
+                {importMsg}
+              </p>
+
+              {importErrs.length ? (
+                <ul className="mt-2 list-disc pl-5 text-red-700 dark:text-red-300 space-y-1">
+                  {importErrs.map((x, idx) => (
+                    <li key={idx}>{x}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
         </div>
-      </details>
+      </div>
+    </details>
+
 
       {/* History */}
       {loading ? (
