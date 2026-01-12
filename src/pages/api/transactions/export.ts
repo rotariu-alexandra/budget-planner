@@ -4,7 +4,6 @@ import { supabase } from "@/lib/supabaseClient";
 
 function csvEscape(value: unknown) {
   const s = String(value ?? "");
-  // dacă are virgulă, ghilimele sau newline, îl punem în quotes și escapăm quotes
   if (/[,"\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
