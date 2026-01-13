@@ -21,7 +21,6 @@ export default function SettingsPage() {
   const userId = user?.id;
 
   const { currency, setCurrency } = usePreferences();
-
   const [month, setMonth] = useState("");
   const [category, setCategory] = useState("");
   const [amount, setAmount] = useState("");
@@ -29,16 +28,17 @@ export default function SettingsPage() {
   const { items, setItems, loading, error, reload } = useBudgets(userId, month);
 
   async function handleSave() {
-    if (!userId) return;
 
+    if (!userId) return;
     if (!month || !category || !amount) {
       alert("All fields required");
       return;
     }
 
     const numericAmount = Number(amount);
+
     if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-      alert("Amount must be a positive number.");
+     alert("Amount must be a positive number.");
       return;
     }
 
@@ -51,14 +51,13 @@ export default function SettingsPage() {
           category,
           amount: numericAmount,
         },
-        { onConflict: "user_id,month,category" } // ✅ robust
+        { onConflict: "user_id,month,category" } 
       );
 
     if (error) {
       alert(error.message);
       return;
     }
-
     setAmount("");
     setCategory("");
     await reload();
@@ -66,7 +65,6 @@ export default function SettingsPage() {
 
   async function handleDelete(id: string) {
     if (!userId) return;
-
     if (!confirm("Delete this budget?")) return;
 
     const { error } = await supabase
@@ -101,18 +99,15 @@ export default function SettingsPage() {
               Budgets are saved per user and per month.
             </p>
           </div>
-
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* LEFT */}
             <div className="lg:col-span-1 space-y-6">
               {/* Preferences */}
               <section className="rounded-2xl bg-white dark:bg-gray-900/60 p-6 shadow-sm">
                 <h2 className="font-semibold mb-4">Preferences</h2>
-
                 <label className="block text-sm font-medium mb-1 text-gray-600 dark:text-gray-400">
                   Preferred currency
                 </label>
-
                 <select
                   value={currency}
                   onChange={(e) => setCurrency(e.target.value as any)}
@@ -122,12 +117,10 @@ export default function SettingsPage() {
                   <option value="EUR">EUR</option>
                   <option value="USD">USD</option>
                 </select>
-
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
                   Display-only setting (no conversion).
                 </p>
               </section>
-
               {/* Budgets list */}
               <section className="rounded-2xl bg-white dark:bg-gray-900/60 p-6 shadow-sm">
                 <div className="flex items-center justify-between gap-3 mb-4">
@@ -166,7 +159,6 @@ export default function SettingsPage() {
                             {formatMoney(b.amount, currency)}
                           </p>
                         </div>
-
                         <button
                           onClick={() => handleDelete(b.id)}
                           className="text-sm font-medium text-red-600 hover:opacity-80 dark:text-red-300"
@@ -179,12 +171,10 @@ export default function SettingsPage() {
                 )}
               </section>
             </div>
-
             {/* RIGHT */}
             <div className="lg:col-span-2">
               <section className="rounded-2xl bg-white dark:bg-gray-900/60 p-6 shadow-sm">
                 <h2 className="font-semibold mb-4">Set monthly budgets</h2>
-
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-1 text-gray-600 dark:text-gray-400">
@@ -197,7 +187,6 @@ export default function SettingsPage() {
                       className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2 text-sm"
                     />
                   </div>
-
                   <div>
                     <label className="block text-sm font-medium mb-1 text-gray-600 dark:text-gray-400">
                       Category
@@ -215,7 +204,6 @@ export default function SettingsPage() {
                       ))}
                     </select>
                   </div>
-
                   <div>
                     <label className="block text-sm font-medium mb-1 text-gray-600 dark:text-gray-400">
                       Amount
@@ -231,7 +219,6 @@ export default function SettingsPage() {
                     />
                   </div>
                 </div>
-
                 <button
                   onClick={handleSave}
                   className="mt-5 rounded-lg bg-indigo-600 text-white px-4 py-2 text-sm font-medium hover:bg-indigo-500"
